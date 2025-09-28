@@ -7,8 +7,7 @@ import sounddevice as sd # type: ignore
 from .desktop_speech_music_classifier import SpeechMusicClassifier
 from .desktop_audio_processor import AudioProcessor
 from faster_whisper import WhisperModel # type: ignore
-from .config import FS, MODEL_SIZE, DEVICE, SAVE_DIR, MAX_THREADS, COMPUTE_TYPE # Updated Import
-
+from .config import FS, MODEL_SIZE, DEVICE, SAVE_DIR, MAX_THREADS, COMPUTE_TYPE 
 
 # --- FIX: Define stop_event at the module level so it can be imported ---
 stop_event = Event()

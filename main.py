@@ -1,9 +1,7 @@
-# audio_mon/main.py
-
 import sys
 import threading
 import asyncio
-import websockets # type: ignore
+import websockets
 import json
 import traceback
 import time
@@ -14,7 +12,7 @@ from transcriber_core.config import FS
 # Global queues for communication between threads
 output_queue = Queue()
 
-async def websocket_server(websocket, path):
+async def websocket_server(websocket):
     """Handles WebSocket communication with the main bot."""
     print("WebSocket client connected.")
     try:
@@ -77,7 +75,7 @@ def run_transcription_system(mic_transcriber, desktop_transcriber):
                     "audio_type": audio_type
                 })
                 desktop_transcriber.result_queue.task_done()
-
+                
             time.sleep(0.1)
         except Exception as e:
             print(f"Error in transcription routing loop: {e}")
@@ -100,22 +98,21 @@ async def main():
     transcription_thread.start()
     
     # Start the WebSocket server on the main thread
-    start_server = websockets.serve(websocket_server, "localhost", 8003)
-    
-    print("WebSocket server listening on ws://localhost:8003")
-
-    try:
-        await start_server
-        await asyncio.Future()  # run forever
-    except KeyboardInterrupt:
-        print("\nShutting down gracefully...")
-        # Signal the transcriber threads to stop
-        mic_transcriber.stop_event.set()
-        desktop_transcriber.stop_event.set()
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        mic_transcriber.stop_event.set()
-        desktop_transcriber.stop_event.set()
+    async with websockets.serve(websocket_server, "localhost", 8003):
+        print("WebSocket server listening on ws://localhost:8003")
+        
+        try:
+            # Keep the server running
+            await asyncio.Future()  # run forever
+        except KeyboardInterrupt:
+            print("\nShutting down gracefully...")
+            # Signal the transcriber threads to stop
+            mic_transcriber.stop_event.set()
+            desktop_transcriber.stop_event.set()
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            mic_transcriber.stop_event.set()
+            desktop_transcriber.stop_event.set()
 
 if __name__ == "__main__":
     asyncio.run(main())
