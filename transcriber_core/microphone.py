@@ -1,18 +1,17 @@
-# nami/audio_utils/microphone.py
 import os
 import sys
-import numpy as np
-import sounddevice as sd
+import numpy as np # type: ignore
+import sounddevice as sd # type: ignore
 import time
-import soundfile as sf
+import soundfile as sf # type: ignore
 import re
 import traceback
 from queue import Queue
 from threading import Thread, Event, Lock
-# We will not import transcribe_stream directly, as it's not at the top level
-import parakeet_mlx
-import mlx.core as mx
-from ..config import MICROPHONE_DEVICE_ID, FS, CHUNK_DURATION, OVERLAP, MAX_THREADS, SAVE_DIR
+import parakeet_mlx # type: ignore
+import mlx.core as mx # type: ignore
+from .config import MICROPHONE_DEVICE_ID, FS, CHUNK_DURATION, OVERLAP, MAX_THREADS, SAVE_DIR # Updated Import
+
 
 # Configuration for Microphone
 SAMPLE_RATE = FS  # Use the same sample rate as desktop audio

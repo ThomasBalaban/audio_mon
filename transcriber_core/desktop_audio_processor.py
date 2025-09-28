@@ -1,8 +1,11 @@
+# audio_mon/transcriber_core/desktop_audio_processor.py
+
 import os
 import time
-import numpy as np
-import soundfile as sf
+import numpy as np  # type: ignore
+import soundfile as sf # type: ignore
 from threading import Thread
+from .config import FS, CHUNK_DURATION, OVERLAP, MAX_THREADS 
 
 class AudioProcessor:
     def __init__(self, transcriber):
@@ -12,9 +15,7 @@ class AudioProcessor:
     def audio_callback(self, indata, frames, timestamp, status):
         """Buffers audio and spawns processing threads for overlapping chunks."""
         try:
-            from nami.config import FS, CHUNK_DURATION, OVERLAP, MAX_THREADS
-
-            # Resume processing if thread count is low
+            # Check if we should resume processing
             if not self.transcriber.processing_lock.is_set() and self.transcriber.active_threads < MAX_THREADS * 0.5:
                 self.transcriber.processing_lock.set()
                     

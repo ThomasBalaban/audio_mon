@@ -1,3 +1,5 @@
+# audio_mon/main.py
+
 import sys
 import threading
 import asyncio
@@ -7,6 +9,7 @@ import traceback
 import time
 from queue import Queue, Empty
 from transcriber_core import MicrophoneTranscriber, DesktopTranscriber
+from transcriber_core.config import FS
 
 # Global queues for communication between threads
 output_queue = Queue()
@@ -28,13 +31,9 @@ async def websocket_server(websocket, path):
     except Exception as e:
         print(f"An error occurred in the WebSocket server: {e}")
 
-def run_transcription_system():
+def run_transcription_system(mic_transcriber, desktop_transcriber):
     """Starts the transcription threads and routes output to the queue."""
     print("🎙️ Initializing Dual Transcriber System...")
-    
-    # Initialize both transcribers
-    mic_transcriber = MicrophoneTranscriber()
-    desktop_transcriber = DesktopTranscriber()
 
     # Create threads
     mic_thread = threading.Thread(
@@ -54,7 +53,7 @@ def run_transcription_system():
 
     print("✅ Both transcription systems are running.")
     print("Waiting for transcriptions...")
-    
+
     # This thread simply pushes results to the output queue
     while True:
         try:
@@ -78,31 +77,45 @@ def run_transcription_system():
                     "audio_type": audio_type
                 })
                 desktop_transcriber.result_queue.task_done()
-                
+
             time.sleep(0.1)
         except Exception as e:
             print(f"Error in transcription routing loop: {e}")
             break
 
-def main():
+async def main():
     """Main function to start the WebSocket and transcription systems."""
     print("Starting Nami Hearing App...")
-    
+
+    # Initialize both transcribers
+    mic_transcriber = MicrophoneTranscriber()
+    desktop_transcriber = DesktopTranscriber()
+
     # Start the transcription system in a separate thread
-    transcription_thread = threading.Thread(target=run_transcription_system, daemon=True)
+    transcription_thread = threading.Thread(
+        target=run_transcription_system,
+        args=(mic_transcriber, desktop_transcriber),
+        daemon=True
+    )
     transcription_thread.start()
     
     # Start the WebSocket server on the main thread
     start_server = websockets.serve(websocket_server, "localhost", 8003)
     
     print("WebSocket server listening on ws://localhost:8003")
-    
+
     try:
-        asyncio.get_event_loop().run_until_complete(start_server)
-        asyncio.get_event_loop().run_forever()
+        await start_server
+        await asyncio.Future()  # run forever
     except KeyboardInterrupt:
-        print("\nShutting down...")
-        sys.exit(0)
+        print("\nShutting down gracefully...")
+        # Signal the transcriber threads to stop
+        mic_transcriber.stop_event.set()
+        desktop_transcriber.stop_event.set()
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        mic_transcriber.stop_event.set()
+        desktop_transcriber.stop_event.set()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

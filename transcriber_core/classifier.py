@@ -1,5 +1,5 @@
-import numpy as np
-import torch
+import numpy as np # type: ignore
+import torch # type: ignore
 from nami.config import FS
 
 class SpeechMusicClassifier:
