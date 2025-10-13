@@ -78,28 +78,18 @@ class SpeechMusicTranscriber:
         }
 
     def output_worker(self):
-        """Processes and displays transcription results."""
+        """Processes transcription results - name correction only, no printing."""
         while not self.stop_event.is_set():
             try:
                 if not self.result_queue.empty():
                     text, filename, audio_type, confidence = self.result_queue.get()
 
                     if text:
-                        # Apply name correction
+                        # Apply name correction only
                         corrected_text = text
                         for variation, name in self.name_variations.items():
                             corrected_text = re.sub(variation, name, corrected_text, flags=re.IGNORECASE)
-
-                        # Print in the required format
-                        print(f"[{audio_type.upper()} {confidence:.2f}] {corrected_text}", flush=True)
-
-                        # Clean up file after processing
-                        if not self.keep_files and filename and os.path.exists(filename):
-                            try: 
-                                os.remove(filename)
-                            except Exception as e: 
-                                print(f"Error removing file: {str(e)}")
-
+                            
                     self.result_queue.task_done()
                 time.sleep(0.05)
             except Exception as e:

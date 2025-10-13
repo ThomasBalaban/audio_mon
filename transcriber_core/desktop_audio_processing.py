@@ -52,109 +52,69 @@ class AudioProcessor:
             self.audio_buffer = np.array([], dtype=np.float32)
     
     def process_chunk(self, chunk):
-        """Process audio chunk and transcribe based on type with enhanced error prevention"""
+        """Processes a single audio chunk in a separate thread."""
         filename = None
         try:
-            # Exit early if we're stopping
-            if self.transcriber.stop_event.is_set():
-                return
-                
-            # Pre-process audio
-            # 1. Ensure minimum length
-            if len(chunk) < self.transcriber.FS * 0.5:
-                return
-                
-            # 2. Apply noise gate - filter out very quiet audio completely
+            # Pre-process audio to filter out silence
             amplitude = np.abs(chunk).mean()
-            if amplitude < 0.005:  # Increased threshold for better noise rejection
+            if amplitude < 0.005:
                 return
-                
-            # 3. Apply dynamic range compression to reduce background noise
-            # Simple compression: reduce volume of quiet parts
-            threshold = 0.02
-            ratio = 0.5  # Compression ratio
-            compressed = np.zeros_like(chunk)
-            for i in range(len(chunk)):
-                if abs(chunk[i]) > threshold:
-                    compressed[i] = chunk[i]
-                else:
-                    compressed[i] = chunk[i] * ratio
-            
-            # 4. Normalize audio after compression
-            max_val = np.max(np.abs(compressed))
-            if max_val < 1e-10:  # Avoid division by zero
+
+            # Check for valid audio
+            if np.isnan(chunk).any() or np.isinf(chunk).any():
+                print("Warning: Invalid audio data, skipping chunk")
                 return
-                
-            chunk = compressed / max_val
-            
-            # 5. Ensure even length
-            if len(chunk) % 2 != 0:
-                chunk = np.pad(chunk, (0, 1), 'constant')
-            
-            # Save audio file
+
             filename = self.save_audio(chunk)
             
-            # Classify audio type if auto_detect is enabled
-            if self.transcriber.auto_detect:
-                audio_type, confidence = self.transcriber.classifier.classify(chunk)
+            if self.auto_detect:
+                audio_type, confidence = self.classifier.classify(chunk)
             else:
-                audio_type = self.transcriber.classifier.current_type
+                audio_type = self.classifier.current_type
                 confidence = 0.8
                 
-            # Skip processing completely if confidence is too low
             if confidence < 0.4:
-                # Clean up file
-                if not self.transcriber.keep_files and filename and os.path.exists(filename):
-                    os.remove(filename)
                 return
+            
+            # Transcribe
+            segments, info = self.model.transcribe(
+                chunk, 
+                beam_size=1, 
+                language="en"
+            )
+            text = "".join(seg.text for seg in segments).strip()
+            
+            # Remove repeated patterns
+            text = re.sub(r'(\w)(\s*-\s*\1){3,}', r'\1...', text)
+            
+            if text and len(text) >= 2:
+                # Apply name correction HERE before queuing
+                corrected_text = text
+                for variation, name in self.name_variations.items():
+                    corrected_text = re.sub(variation, name, corrected_text, flags=re.IGNORECASE)
                 
-            # Transcribe with error handling - FIXED: Removed problematic parameters
-            try:
-                # Process and transcribe using the segments, info pattern
-                segments, info = self.transcriber.model.transcribe(
-                    chunk, 
-                    beam_size=1, 
-                    language="en"
-                )
-                text = "".join(seg.text for seg in segments).strip()
-                
-                # Post-process text - remove repeated characters (like B-B-B-B)
-                text = re.sub(r'(\w)(\s*-\s*\1){3,}', r'\1...', text)
-                
-                # Handle empty or very short results based on audio type
-                min_length = 2 if audio_type == "speech" else 4  # Higher threshold for music
-                
-                if text and len(text) >= min_length:
-                    self.transcriber.result_queue.put((text, filename, audio_type, confidence))
-                else:
-                    # Silently clean up files with no text
-                    if not self.transcriber.keep_files and filename and os.path.exists(filename):
-                        os.remove(filename)
-                    
-            except Exception as e:
-                print(f"Transcription error: {str(e)}")
-                
-                # Clean up file on error
-                if not self.transcriber.keep_files and filename and os.path.exists(filename):
-                    try:
-                        os.remove(filename)
-                    except:
-                        pass
+                # Put corrected text in queue
+                self.result_queue.put((corrected_text, filename, audio_type, confidence))
+            else:
+                # Clean up if no text
+                if not self.keep_files and filename and os.path.exists(filename):
+                    os.remove(filename)
                 
         except Exception as e:
             print(f"Processing error: {str(e)}")
+            import traceback
+            traceback.print_exc()
         finally:
             # Ensure the thread count is always decremented
-            self.transcriber.active_threads -= 1
-            # If the file was created but not used, clean it up
-            if filename and not self.transcriber.keep_files and os.path.exists(filename):
+            self.active_threads -= 1
+            # Clean up unused files
+            if filename and not self.keep_files and os.path.exists(filename):
                 try:
-                    # Check if it's already been queued for deletion
-                    if not any(filename in item for item in list(self.transcriber.result_queue.queue)):
-                         os.remove(filename)
+                    if not any(filename in item for item in list(self.result_queue.queue)):
+                        os.remove(filename)
                 except:
                     pass
-
+                
     def save_audio(self, chunk):
         """Saves audio chunk to file and returns filename."""
         timestamp = time.strftime("%Y%m%d-%H%M%S")
