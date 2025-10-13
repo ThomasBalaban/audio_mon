@@ -7,7 +7,7 @@ import sounddevice as sd # type: ignore
 from .desktop_speech_music_classifier import SpeechMusicClassifier
 from .desktop_audio_processor import AudioProcessor
 from faster_whisper import WhisperModel # type: ignore
-from .config import FS, MODEL_SIZE, DEVICE, SAVE_DIR, MAX_THREADS, COMPUTE_TYPE 
+from .config import FS, MODEL_SIZE, DEVICE, SAVE_DIR, MAX_THREADS, COMPUTE_TYPE, DESKTOP_DEVICE_ID # Added DESKTOP_DEVICE_ID
 
 # --- FIX: Define stop_event at the module level so it can be imported ---
 stop_event = Event()
@@ -15,13 +15,14 @@ stop_event = Event()
 class SpeechMusicTranscriber:
     def __init__(self, keep_files=False, auto_detect=True, transcript_manager=None):
         try:
-            from nami.config import FS, MODEL_SIZE, DEVICE, SAVE_DIR, MAX_THREADS
+            from nami.config import FS, MODEL_SIZE, DEVICE, SAVE_DIR, MAX_THREADS, DESKTOP_DEVICE_ID
             self.FS = FS
             self.SAVE_DIR = SAVE_DIR
             self.MAX_THREADS = MAX_THREADS
             self.MODEL_SIZE = "base.en"
             self.DEVICE = "cpu"
             self.COMPUTE_TYPE = "int8"
+            self.DESKTOP_DEVICE_ID = DESKTOP_DEVICE_ID  # Store the desktop device ID
         except ImportError:
             self.FS = 16000
             self.SAVE_DIR = "audio_captures"
@@ -29,11 +30,17 @@ class SpeechMusicTranscriber:
             self.MODEL_SIZE = "base.en"
             self.DEVICE = "cpu"
             self.COMPUTE_TYPE = "int8"
+            self.DESKTOP_DEVICE_ID = None  # Default to None if config not available
             print("⚠️ Using fallback config values for transcriber")
 
         os.makedirs(self.SAVE_DIR, exist_ok=True)
 
         print(f"🎙️ Initializing faster-whisper for Desktop Audio: {self.MODEL_SIZE} on {self.DEVICE}")
+        if self.DESKTOP_DEVICE_ID is not None:
+            print(f"🔊 Using desktop audio device ID: {self.DESKTOP_DEVICE_ID}")
+        else:
+            print("🔊 Using default desktop audio device")
+            
         try:
             self.model = WhisperModel(self.MODEL_SIZE, device=self.DEVICE, compute_type=self.COMPUTE_TYPE)
             print("✅ faster-whisper model for Desktop is ready.")
@@ -110,18 +117,41 @@ class SpeechMusicTranscriber:
         output_thread.start()
 
         try:
-            with sd.InputStream(
-                samplerate=FS,
-                channels=1,
-                callback=self.audio_processor.audio_callback,
-                blocksize=FS//10
-            ):
-                print("🎧 Listening to desktop audio...")
+            # FIXED: Add device parameter to use the specified desktop audio device
+            stream_kwargs = {
+                'samplerate': FS,
+                'channels': 1,
+                'callback': self.audio_processor.audio_callback,
+                'blocksize': FS//10
+            }
+            
+            # Only add device parameter if we have a specific device ID
+            if self.DESKTOP_DEVICE_ID is not None:
+                stream_kwargs['device'] = self.DESKTOP_DEVICE_ID
+            
+            with sd.InputStream(**stream_kwargs):
+                if self.DESKTOP_DEVICE_ID is not None:
+                    print(f"🎧 Listening to desktop audio on device {self.DESKTOP_DEVICE_ID}...")
+                else:
+                    print("🎧 Listening to desktop audio on default device...")
                 while not self.stop_event.is_set():
                     time.sleep(0.1)
 
         except KeyboardInterrupt:
             print("\nReceived interrupt, stopping desktop transcriber...")
+        except Exception as e:
+            print(f"\n❌ Error starting desktop audio stream: {e}")
+            print("This might be due to an invalid device ID or device not available.")
+            # Try to list available devices to help debug
+            try:
+                print("\nAvailable audio devices:")
+                devices = sd.query_devices()
+                for i, device in enumerate(devices):
+                    if device['max_input_channels'] > 0:
+                        marker = " ← CONFIGURED" if i == self.DESKTOP_DEVICE_ID else ""
+                        print(f"  {i}: {device['name']}{marker}")
+            except:
+                print("Could not list audio devices.")
         finally:
             self.stop_event.set()
             print("\nShutting down desktop transcriber...")
