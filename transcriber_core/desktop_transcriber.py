@@ -28,7 +28,6 @@ class SpeechMusicTranscriber:
         print(f"🎙️ Initializing faster-whisper for Desktop Audio: {self.MODEL_SIZE} on {self.DEVICE}")
         if self.DESKTOP_DEVICE_ID is not None:
             print(f"🔊 Using desktop audio device ID: {self.DESKTOP_DEVICE_ID}")
-            # Get device info to show sample rate
             try:
                 device_info = sd.query_devices(self.DESKTOP_DEVICE_ID)
                 print(f"   Device: {device_info['name']}")
@@ -77,37 +76,18 @@ class SpeechMusicTranscriber:
             r'\bpeepingnomi\b': 'PeepingNami'
         }
 
-    def output_worker(self):
-        """Processes transcription results - name correction only, no printing."""
-        while not self.stop_event.is_set():
-            try:
-                if not self.result_queue.empty():
-                    text, filename, audio_type, confidence = self.result_queue.get()
-
-                    if text:
-                        # Apply name correction only
-                        corrected_text = text
-                        for variation, name in self.name_variations.items():
-                            corrected_text = re.sub(variation, name, corrected_text, flags=re.IGNORECASE)
-                            
-                    self.result_queue.task_done()
-                time.sleep(0.05)
-            except Exception as e:
-                print(f"Output worker error: {str(e)}")
-
     def run(self):
-        """Starts the audio stream and worker threads."""
+        """Starts the audio stream (NO output_worker thread!)."""
         print(f"Model: {self.MODEL_SIZE.upper()} | Device: {self.DEVICE.upper()}")
         print(f"Target Sample Rate: {self.FS} Hz")
 
-        output_thread = Thread(target=self.output_worker, daemon=True)
-        output_thread.start()
+        # REMOVED: output_thread - name correction now happens in process_chunk
+        # All output will be handled by main.py
 
         try:
-            # Get the device info to determine native sample rate
             device_info = sd.query_devices(self.DESKTOP_DEVICE_ID)
             native_samplerate = int(device_info['default_samplerate'])
-            channels = min(device_info['max_input_channels'], 2)  # Use stereo if available
+            channels = min(device_info['max_input_channels'], 2)
             
             print(f"🎧 Opening audio stream:")
             print(f"   Device ID: {self.DESKTOP_DEVICE_ID}")
@@ -115,13 +95,12 @@ class SpeechMusicTranscriber:
             print(f"   Channels: {channels}")
             print(f"   Resampling: {'YES' if native_samplerate != self.FS else 'NO'}")
             
-            # Configure the stream
             stream_kwargs = {
                 'device': self.DESKTOP_DEVICE_ID,
-                'samplerate': native_samplerate,  # Use native sample rate
+                'samplerate': native_samplerate,
                 'channels': channels,
                 'callback': self.audio_processor.audio_callback,
-                'blocksize': native_samplerate // 10,  # 100ms blocks
+                'blocksize': native_samplerate // 10,
                 'dtype': 'float32'
             }
             
@@ -133,7 +112,6 @@ class SpeechMusicTranscriber:
                 while not self.stop_event.is_set():
                     time.sleep(0.1)
                     
-                    # Periodic status report
                     if time.time() - last_activity_report > 30:
                         print(f"   [Status] Active threads: {self.active_threads}, Buffer size: {len(self.audio_processor.audio_buffer)}")
                         last_activity_report = time.time()

@@ -18,7 +18,7 @@ class AudioProcessor:
             device_info = sd.query_devices(transcriber.DESKTOP_DEVICE_ID)
             self.native_samplerate = int(device_info['default_samplerate'])
         except:
-            self.native_samplerate = FS  # Fallback
+            self.native_samplerate = FS
         
         self.needs_resampling = (self.native_samplerate != FS)
         if self.needs_resampling:
@@ -29,10 +29,7 @@ class AudioProcessor:
         if from_rate == to_rate:
             return audio
         
-        # Calculate the number of samples in the resampled audio
         num_samples = int(len(audio) * to_rate / from_rate)
-        
-        # Use scipy's resample for high-quality resampling
         resampled = signal.resample(audio, num_samples)
         return resampled.astype(np.float32)
 
@@ -42,7 +39,6 @@ class AudioProcessor:
             if status:
                 print(f"[Desktop Audio Status] {status}")
             
-            # Check if we should resume processing
             if not self.transcriber.processing_lock.is_set() and self.transcriber.active_threads < MAX_THREADS * 0.5:
                 self.transcriber.processing_lock.set()
                     
@@ -61,15 +57,12 @@ class AudioProcessor:
             
             self.audio_buffer = np.concatenate([self.audio_buffer, new_audio])
             
-            # Process when buffer reaches target duration and we're not overloaded
             target_samples = FS * CHUNK_DURATION
             if (self.transcriber.processing_lock.is_set() and 
                 len(self.audio_buffer) >= target_samples and
                 self.transcriber.active_threads < MAX_THREADS):
                     
-                # Copy chunk to prevent modification during processing
                 chunk = self.audio_buffer[:target_samples].copy()
-                # Slide buffer forward to create overlap
                 overlap_samples = int(FS * (CHUNK_DURATION - OVERLAP))
                 self.audio_buffer = self.audio_buffer[overlap_samples:]
                     
@@ -77,7 +70,6 @@ class AudioProcessor:
                 Thread(target=self.process_chunk, args=(chunk,)).start()
                 self.transcriber.last_processed = time.time()
                 
-                # If we get too many threads, temporarily pause processing
                 if self.transcriber.active_threads >= MAX_THREADS:
                     self.transcriber.processing_lock.clear()
                     print(f"Pausing processing - too many active threads: {self.transcriber.active_threads}")
@@ -125,7 +117,13 @@ class AudioProcessor:
             text = re.sub(r'(\w)(\s*-\s*\1){3,}', r'\1...', text)
             
             if text and len(text) >= 2:
-                self.transcriber.result_queue.put((text, filename, audio_type, confidence))
+                # Apply name correction HERE before putting in queue
+                corrected_text = text
+                for variation, name in self.transcriber.name_variations.items():
+                    corrected_text = re.sub(variation, name, corrected_text, flags=re.IGNORECASE)
+                
+                # Put CORRECTED text in queue for main.py to consume
+                self.transcriber.result_queue.put((corrected_text, filename, audio_type, confidence))
             else:
                 # Clean up if no text
                 if not self.transcriber.keep_files and filename and os.path.exists(filename):
@@ -136,9 +134,7 @@ class AudioProcessor:
             import traceback
             traceback.print_exc()
         finally:
-            # Ensure the thread count is always decremented
             self.transcriber.active_threads -= 1
-            # Clean up unused files
             if filename and not self.transcriber.keep_files and os.path.exists(filename):
                 try:
                     if not any(filename in item for item in list(self.transcriber.result_queue.queue)):
@@ -148,7 +144,7 @@ class AudioProcessor:
 
     def save_audio(self, chunk):
         """Saves audio chunk to file and returns filename."""
-        timestamp = time.strftime("%Y%m%d-%H%M%S-%f")[:-3]  # Include milliseconds
+        timestamp = time.strftime("%Y%m%d-%H%M%S-%f")[:-3]
         filename = os.path.join(self.transcriber.SAVE_DIR, f"desktop_{timestamp}.wav")
         sf.write(filename, chunk, FS, subtype='PCM_16')
         self.transcriber.saved_files.append(filename)
