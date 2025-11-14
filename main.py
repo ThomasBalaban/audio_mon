@@ -106,7 +106,7 @@ class TranscriptionDeduplicator:
             self.recent_transcripts[source] = (text, current_time)
             return True, text
 
-# Initialize deduplicator - ONLY for desktop audio (microphone is streaming now)
+# Initialize deduplicator for both microphone and desktop audio
 deduplicator = TranscriptionDeduplicator(
     similarity_threshold=0.70,  # Higher threshold
     time_window=3.0,  # Longer window
@@ -132,7 +132,7 @@ async def websocket_server(websocket):
 
 def run_transcription_system(mic_transcriber, desktop_transcriber):
     """Starts the transcription threads and routes output to the queue."""
-    print("🎙️ Initializing Dual Transcriber System (Streaming Mode)...")
+    print("🎙️ Initializing Dual Transcriber System (Fast Batch Mode)...")
 
     mic_thread = threading.Thread(
         target=mic_transcriber.run,
@@ -150,8 +150,8 @@ def run_transcription_system(mic_transcriber, desktop_transcriber):
     mic_thread.start()
 
     print("✅ Both transcription systems are running.")
-    print("   🎤 Microphone: STREAMING MODE (live updates)")
-    print("   🖥️ Desktop: DEDUPLICATION MODE (chunked)")
+    print("   🎤 Microphone: FAST BATCH MODE (0.5s silence, deduplication enabled)")
+    print("   🖥️ Desktop: CHUNKED MODE (deduplication enabled)")
     print("Waiting for transcriptions...")
 
     while True:
@@ -159,17 +159,20 @@ def run_transcription_system(mic_transcriber, desktop_transcriber):
             mic_result = None
             desktop_result = None
             
-            # Get from mic queue - NO DEDUPLICATION (streaming mode)
+            # Get from mic queue - WITH DEDUPLICATION (batch mode)
             try:
                 text, filename, source, confidence = mic_transcriber.result_queue.get(block=False)
                 
-                # Microphone is streaming, send everything as-is
-                mic_result = {
-                    "source": "microphone",
-                    "text": text,
-                    "confidence": confidence,
-                    "audio_type": "speech"
-                }
+                # Process with deduplicator for microphone
+                should_output, final_text = deduplicator.process(text, "microphone")
+                
+                if should_output:
+                    mic_result = {
+                        "source": "microphone",
+                        "text": final_text,
+                        "confidence": confidence,
+                        "audio_type": "speech"
+                    }
                 mic_transcriber.result_queue.task_done()
             except Empty:
                 pass
@@ -215,15 +218,15 @@ def run_transcription_system(mic_transcriber, desktop_transcriber):
 async def main():
     """Main function to start the WebSocket and transcription systems."""
     print("="*60)
-    print("Starting Nami Hearing App (Streaming Microphone Mode)")
+    print("Starting Nami Hearing App (Fast Batch Mode)")
     print("="*60)
     print("This app transcribes:")
-    print("  • Microphone input: STREAMING (live word-by-word updates)")
+    print("  • Microphone input: FAST BATCH (0.5s silence threshold)")
     print("  • Desktop audio: CHUNKED (classified as 'speech' or 'music')")
-    print("\nMicrophone streaming features:")
-    print("  • Real-time transcription as you speak")
-    print("  • Continuous updates sent to AI")
-    print("  • Session auto-resets every 5 minutes after 3s silence")
+    print("\nMicrophone features:")
+    print("  • Fast response: 0.5-0.8s latency")
+    print("  • Accurate complete sentences")
+    print("  • Smart deduplication")
     print("\nDesktop deduplication:")
     print("  • Filters duplicate transcriptions")
     print("  • Merges overlapping continuations")

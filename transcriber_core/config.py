@@ -15,9 +15,3 @@ MICROPHONE_DEVICE_ID = 5  # Your Scarlett Solo 4th Gen
 MODEL_SIZE = "base.en"  # The whisper model to use
 DEVICE = "cpu"  # The device to run the model on
 COMPUTE_TYPE = "int8"  # Compute type for the model
-
-# Microphone Streaming Settings
-STREAM_UPDATE_INTERVAL = 0.1  # How often to check for new transcription results (seconds)
-SESSION_MAX_DURATION = 300  # Max session duration before reset (5 minutes)
-SESSION_RESET_SILENCE = 3.0  # Silence duration required to reset session (seconds)
-VAD_THRESHOLD = 0.008  # Voice activity detection threshold
