@@ -217,21 +217,6 @@ def run_transcription_system(mic_transcriber, desktop_transcriber):
 
 async def main():
     """Main function to start the WebSocket and transcription systems."""
-    print("="*60)
-    print("Starting Nami Hearing App (Fast Batch Mode)")
-    print("="*60)
-    print("This app transcribes:")
-    print("  • Microphone input: FAST BATCH (0.5s silence threshold)")
-    print("  • Desktop audio: CHUNKED (classified as 'speech' or 'music')")
-    print("\nMicrophone features:")
-    print("  • Fast response: 0.5-0.8s latency")
-    print("  • Accurate complete sentences")
-    print("  • Smart deduplication")
-    print("\nDesktop deduplication:")
-    print("  • Filters duplicate transcriptions")
-    print("  • Merges overlapping continuations")
-    print("="*60)
-
     mic_transcriber = MicrophoneTranscriber()
     desktop_transcriber = DesktopTranscriber()
 

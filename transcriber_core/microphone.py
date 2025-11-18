@@ -34,12 +34,10 @@ class MicrophoneTranscriber:
         
         os.makedirs(self.SAVE_DIR, exist_ok=True)
 
-        print("🎙️ Initializing parakeet-mlx for Microphone (Fast Batch Mode)...")
         try:
             self.model = parakeet_mlx.from_pretrained("mlx-community/parakeet-tdt-0.6b-v2")
-            print("✅ parakeet-mlx for Microphone is ready.")
         except Exception as e:
-            print(f"❌ Error initializing Parakeet: {e}")
+            print(f"❌ Error initializing: {e}")
             raise
 
         self.result_queue = Queue()
